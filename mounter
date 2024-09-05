@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# Get sudo password
+sudo echo
+
+# Make a list of devices using lsblk to get their name, size, and model
+sudo lsblk -o NAME,SIZE,MODEL --list | grep -v "NAME" | awk '{print NR, $0}' > /tmp/devices.txt
+
+# Display the list of devices to the user
+echo "Select a device to mount:"
+cat /tmp/devices.txt
+echo
+
+# Get the user's selection
+read -p "Enter the number of the device you want to mount: " device_number
+echo
+
+# Get the device name from the list
+device_name=$(cat /tmp/devices.txt | grep "^$device_number " | awk '{print $2}')
+
+# Check if the device is already mounted
+if grep -qs "/dev/$device_name" /proc/mounts; then
+	mount_point=$(grep "/dev/$device_name" /proc/mounts | awk '{print $2}')
+	echo "Device /dev/$device_name is already mounted at $mount_point"
+	exit
+fi
+
+# Get the mount point from the user
+read -p "Enter the directory where you want to mount /dev/$device_name: " mount_point
+
+# Check if the mount point exists
+if [ ! -d "$mount_point" ]; then
+	echo "Directory $mount_point does not exist"
+	exit
+fi
+
+# Mount the device
+is_ntfs=$(lsblk -o FSTYPE --noheadings /dev/$device_name | grep -i "ntfs")
+
+# If the device is NTFS, mount it with the uid and gid options to set the owner and group to noodlebug
+if [ -n "$is_ntfs" ]; then
+	username=$(whoami)
+	sudo mount -t ntfs -o uid=$username,gid=$username /dev/$device_name $mount_point
+else
+	sudo mount /dev/$device_name $mount_point
+fi
+
+# Check if the mount was successful
+if [ $? -eq 0 ]; then
+	echo "Device /dev/$device_name mounted at $mount_point"
+else
+	echo "Failed to mount device /dev/$device_name"
+fi
+
+# Clean up the list of devices
+sudo rm /tmp/devices.txt
+
+echo
